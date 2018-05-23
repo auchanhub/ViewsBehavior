@@ -7,7 +7,6 @@ use yii\base\Behavior;
 use yii\db\ActiveRecord;
 use yii\web\Controller;
 use yii\db\Expression;
-use yii\db\Exception;
 use yii\web\Cookie;
 
 
@@ -22,16 +21,16 @@ class ViewsBehavior extends Behavior
     /**
      * Имя модели просмотры которого необходимо учитывать
      *
-     * @var string
+     * @var ActiveRecord
      */
-    public $targetModel = '';
+    public $targetModel;
 
     /**
      * Имя модели хранения просмотров
      *
-     * @var string
+     * @var ActiveRecord
      */
-    public $viewsModel = '';
+    public $viewsModel;
 
     /**
      * Имя атрибута хранящий timestamp создания записи модели хранения просмотров
@@ -40,19 +39,6 @@ class ViewsBehavior extends Behavior
      */
     public $createTimeAttribute = 'created_at';
 
-    /**
-     * Namespace модели хранения просмотров
-     *
-     * @var string
-     */
-    public $viewsModelNamespace = 'common\models';
-
-    /**
-     * Namespace модели просмотры которого собираемся учитывать
-     *
-     * @var string
-     */
-    public $modelNamespace = 'common\models';
 
     /**
      * Ключ по которому сохранять запись в куки о просмотре модели
@@ -69,7 +55,7 @@ class ViewsBehavior extends Behavior
     public $cookieExpireTime = 31536000;
 
     /**
-     * По дефолту экшен view, можно указать свое имя экшена используемый для просмотра модели
+     * По дефолту экшен view, можно указать свое имя экшена для просмотра модели
      *
      * @var string
      */
@@ -123,14 +109,6 @@ class ViewsBehavior extends Behavior
          */
         $action_params = $controller->actionParams;
 
-        /**
-         * Получаем модель учета просмотров и модель просмотры которого надо учитывать соответственно
-         *
-         * @var ActiveRecord $viewsModelName
-         * @var ActiveRecord $targetModelName
-         */
-        $viewsModelName = '\\'.$this->viewsModelNamespace.'\\'.$this->viewsModel;
-        $targetModelName = '\\'.$this->modelNamespace.'\\'.$this->targetModel;
 
         /**
          * Поиск просматриваемой модели по атрибуту и значению атрибута который зашел в экшен
@@ -138,7 +116,7 @@ class ViewsBehavior extends Behavior
          *
          * @var null|ActiveRecord $model
          */
-        $model = $targetModelName::findOne(
+        $model = $this->targetModel::findOne(
             [
                 array_keys($action_params)[0] => array_values($action_params)[0]
             ]
@@ -156,8 +134,6 @@ class ViewsBehavior extends Behavior
             return;
         }
 
-        $transaction = Yii::$app->getDb()->beginTransaction();
-
         try {
 
             //Ставим куки о просмотре текущей модели
@@ -168,35 +144,14 @@ class ViewsBehavior extends Behavior
             ]);
             Yii::$app->getResponse()->getCookies()->add($cookie);
 
-            /**
-             * Ищем запись о просмотре модели за сегодня
-             * Если не нашли создаем новую иначе апдейтим счетчик у найденной
-             * @var null|ActiveRecord $modelViews
-             */
-            $modelViews = $viewsModelName::find()
-                ->where(['model_id' => $model->id])
-                ->andWhere(['>', 'created_at', new Expression('UNIX_TIMESTAMP(CURDATE())')])
-                ->andWhere(['<', 'created_at', new Expression('UNIX_TIMESTAMP(CURDATE() + 1)')])
-                ->limit(1)
-                ->orderBy(['id'=>SORT_DESC])
-                ->one();
+            /** @var ActiveRecord $modelViews */
+            $modelViews = new $this->viewsModel;
+            $modelViews->model_id = $model->id;
+            $modelViews->save();
 
-            if (null === $modelViews) {
-                $modelViews = new $viewsModelName;
-                $modelViews->views = 1;
-                $modelViews->model_id = $model->id;
-                $modelViews->save();
-            } else {
-                $modelViews->updateCounters(['views' => 1]);
-                $modelViews->updated_at = new Expression('NOW()');
-                $modelViews->save();
-            }
 
-            $transaction->commit();
-
-        } catch (Exception $e) {
-            $transaction->rollback();
-            Yii::warning($e->__toString(), 'ViewBehaviors.add.updateCounters');
+        } catch (\Exception $e) {
+            Yii::$app->errorHandler->logException($e);
         }
 
     }
