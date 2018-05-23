@@ -69,7 +69,7 @@ class ViewsBehavior extends Behavior
     public $cookieExpireTime = 31536000;
 
     /**
-     * По дефолту экшен view, можно указать свое имя экшена для просмотра модели
+     * По дефолту экшен view, можно указать свое имя экшена используемый для просмотра модели
      *
      * @var string
      */
