@@ -7,13 +7,15 @@
 
 Обязательный параметры
 ```php
+use common\behaviors\ViewsBehavior;
+
 public function behaviors()
 {
     return [
         'statistics' => [
             'class' => ViewsBehavior::class,
-            'targetModel' => 'Article', //required default ''
-            'viewsModel' => 'ArticleViews', //required default ''
+            'targetModel' => \common\models\Article::class, //required default ''
+            'viewsModel' => \common\models\ArticleViews::class, //required default ''
             'cookieName' => 'article_views', //required default ''
         ]
     ];
@@ -22,17 +24,17 @@ public function behaviors()
 
 Возможные параметры
 ```php
+use common\behaviors\ViewsBehavior;
+
 public function behaviors()
 {
     return [
         'statistics' => [
             'class' => ViewsBehavior::class,
-            'targetModel' => 'Article', //required default ''
-            'viewsModel' => 'ArticleViews', //required default ''
+            'targetModel' => \common\models\Article::class, //required default ''
+            'viewsModel' => \common\models\ArticleViews::class, //required default ''
             'cookieName' => 'article_views', //required default ''
             'action' => 'view', //default view
-            'modelNamespace' => 'common\models', //default common\models
-            'viewsModelNamespace' => 'common\models', //default common\models
             'createTimeAttribute' => 'created_at', //default created_at
             'cookieExpireTime' => 31536000, //default 31536000 (1 year)
         ]
