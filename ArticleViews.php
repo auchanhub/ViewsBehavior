@@ -1,71 +1,155 @@
 <?php
 
-namespace common\models;
+namespace common\behaviors;
 
 use Yii;
-use \yii\db\ActiveRecord;
-use yii\behaviors\TimestampBehavior;
+use yii\base\Behavior;
+use yii\db\ActiveRecord;
+use yii\web\Controller;
+use yii\db\Expression;
+use yii\web\Cookie;
+
 
 /**
- * This is the model class for table "{{%article_views}}".
- *
- * @property int     $id
- * @property int     $model_id
- * @property int     $views
- * @property integer $created_at
- * @property integer $updated_at
- *
- * @property Article $article
+ * Class ViewsBehavior
+ * Активирует счетчик статистики по событию EVENT_BEFORE_ACTION
+ * для указанных действий контроллера в методе behaviors()
+ * @package common\behaviors
  */
-class ArticleViews extends ActiveRecord
+class ViewsBehavior extends Behavior
 {
     /**
-     * {@inheritdoc}
+     * Имя модели просмотры которого необходимо учитывать
+     *
+     * @var ActiveRecord
      */
-    public static function tableName()
-    {
-        return '{{%article_views}}';
-    }
+    public $targetModel;
 
     /**
-     * @inheritdoc
+     * Имя модели хранения просмотров
+     *
+     * @var ActiveRecord
      */
-    public function behaviors()
+    public $viewsModel;
+
+    /**
+     * Имя атрибута хранящий timestamp создания записи модели хранения просмотров
+     *
+     * @var string
+     */
+    public $createTimeAttribute = 'created_at';
+
+
+    /**
+     * Ключ по которому сохранять запись в куки о просмотре модели
+     *
+     * @var string
+     */
+    public $cookieName = '';
+
+    /**
+     * Время на которое ставить куки о просмотре модели (по умолчанию 1 год)
+     *
+     * @var int
+     */
+    public $cookieExpireTime = 31536000;
+
+    /**
+     * По дефолту экшен view, можно указать свое имя экшена для просмотра модели
+     *
+     * @var string
+     */
+    public $action = 'view';
+
+    /**
+     * Привязка вызова метода add к событию
+     *
+     * @return array
+     */
+    public function events()
     {
         return [
-            TimestampBehavior::class,
+            Controller::EVENT_AFTER_ACTION => 'add',
         ];
     }
 
     /**
-     * {@inheritdoc}
+     * Сохранение данных посетителя в БД
+     *
+     * @return void
      */
-    public function rules()
+    public function add()
     {
-        return [
-            [['model_id'], 'required'],
-            [['model_id', 'views'], 'integer'],
-            [['model_id'], 'exist', 'skipOnError' => true, 'targetClass' => Article::className(), 'targetAttribute' => ['model_id' => 'id']],
-        ];
-    }
+        if (!$this->targetModel || !$this->viewsModel || !$this->cookieName) {
+            Yii::warning(
+                "Empty required parametr. targetModel => '{$this->targetModel}', viewsModel => '{$this->viewsModel}', cookieName => '{$this->cookieName}'",
+                'ViewBehaviors.add'
+            );
+            return;
+        }
 
-    /**
-     * {@inheritdoc}
-     */
-    public function attributeLabels()
-    {
-        return [
-            'id' => Yii::t('common', 'ID'),
-            'model_id' => Yii::t('common', 'Article ID'),
-            'views' => Yii::t('common', 'Views'),
-        ];
-    }
+        /** @var Controller $controller */
+        $controller = $this->owner;
 
-    /**
-     * @return \yii\db\ActiveQuery
-     */
-    public function getArticle()
-    {
-        return $this->hasOne(Article::className(), ['id' => 'model_id']);
+        /**
+         * ID текущего действия
+         * Обрываем если не тот контроллер (см. @property $action)
+         *
+         * @var string $action_name
+         */
+        $action_name = $controller->action->id;
+        if($action_name != $this->action) {
+            return;
+        }
+
+        /**
+         * Получаем аттрибут и значение аттрибута используемого экшеном просмотра модели (см. @property $action)
+         *
+         * @var array $action_params
+         */
+        $action_params = $controller->actionParams;
+
+
+        /**
+         * Поиск просматриваемой модели по атрибуту и значению атрибута который зашел в экшен
+         * Обрываем выполнение если не нашлась модель
+         *
+         * @var null|ActiveRecord $model
+         */
+        $model = $this->targetModel::findOne(
+            [
+                array_keys($action_params)[0] => array_values($action_params)[0]
+            ]
+        );
+
+        if (null === $model) {
+            return;
+        }
+
+        //Не учитываем просмотры если уже смотрели текущую модель
+        if (Yii::$app->getRequest()->getCookies()->has($this->cookieName.'_'.$model->id)) {
+            return;
+        }
+
+        try {
+
+            //Ставим куки о просмотре текущей модели
+            $cookie = new Cookie([
+                'name' => $this->cookieName.'_'.$model->id,
+                'value' => $model->id,
+                'expire' => time() + $this->cookieExpireTime,
+            ]);
+            Yii::$app->getResponse()->getCookies()->add($cookie);
+
+            /** @var ActiveRecord $modelViews */
+            $modelViews = new $this->viewsModel;
+            $modelViews->model_id = $model->id;
+            $modelViews->save();
+
+
+        } catch (\Exception $e) {
+            Yii::$app->errorHandler->logException($e);
+        }
+
     }
 }
