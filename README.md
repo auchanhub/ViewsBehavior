@@ -1,5 +1,8 @@
 # ViewsBehavior
 
+There are many bugs in the code, please do not use it
+----------------
+
 Поведение для учета просмотров ActiveRecord модели
 ----------------
 
